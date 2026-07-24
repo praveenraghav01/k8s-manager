@@ -106,7 +106,12 @@ export default function Navigation({
           </div>
           <div className="nav-brand-text">
             <span className="nav-brand-title">Kubernetes</span>
-            <span className="nav-brand-sub">Manager</span>
+            <span className="nav-brand-sub">
+              Manager
+              {typeof __APP_VERSION__ !== 'undefined' && (
+                <span className="nav-brand-version">v{__APP_VERSION__}</span>
+              )}
+            </span>
           </div>
           <button
             className="theme-toggle"

@@ -1,6 +1,6 @@
 {
   "name": "k8s-manager",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Kubernetes resource manager UI",
   "type": "module",
   "main": "electron/main.cjs",
@@ -48,18 +48,25 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         }
       ]
     },
     "linux": {
       "category": "Development",
       "icon": "build/icon.png",
-      "target": ["AppImage", "deb"]
+      "target": [
+        "AppImage",
+        "deb"
+      ]
     },
     "win": {
       "icon": "build/icon.png",
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     }
   }
 }

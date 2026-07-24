@@ -48,4 +48,20 @@ ENV NODE_ENV=production
 
 EXPOSE 3001
 
+# ------------------------------------------------------------------
+# OCI image metadata.
+# GHCR shows `description` as the package's short blurb and, via `source`,
+# links the package to its GitHub repo — whose README then renders as the
+# package "overview". The release workflow's docker/metadata-action overrides
+# source/revision/created automatically; set IMAGE_SOURCE for manual builds.
+# ------------------------------------------------------------------
+ARG IMAGE_SOURCE="https://github.com/OWNER/k8s-manager"
+ARG APP_VERSION="0.0.0"
+LABEL org.opencontainers.image.title="Kubernetes Manager" \
+      org.opencontainers.image.description="Web UI to browse and operate Kubernetes clusters — workloads, nodes, events, logs, in-browser exec/terminal, service port-forwarding, Helm releases, RBAC and CRDs. Reads your kubeconfig and serves the UI + REST API on port 3001." \
+      org.opencontainers.image.source="${IMAGE_SOURCE}" \
+      org.opencontainers.image.url="${IMAGE_SOURCE}" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.licenses="MIT"
+
 CMD ["node", "server.js"]
