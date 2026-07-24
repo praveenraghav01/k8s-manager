@@ -12,7 +12,9 @@ import Topology from './components/Topology';
 import Loader from './components/Loader';
 import Namespaces from './components/Namespaces';
 import KubeConfigModal from './components/KubeConfigModal';
+import AuthErrorModal from './components/AuthErrorModal';
 import AccessControl from './components/AccessControl';
+import { useToast } from './components/Toast';
 
 // Views that load their own data and should NOT trigger the shared resource fetch.
 // (Overview is intentionally excluded — its dashboard is built from the shared fetch.)
@@ -27,15 +29,20 @@ const pluralKey = (rt) => PLURAL_KEY[rt] || `${rt}s`;
 const CLUSTER_SCOPED = ['persistentVolume', 'storageClass'];
 
 function App() {
+  const toast = useToast();
   const [configStatus, setConfigStatus] = useState({ loaded: false, contexts: [] });
   const [configChecked, setConfigChecked] = useState(false);
+  const [serverUnreachable, setServerUnreachable] = useState(false);
+  // Cluster auth pre-check: { checked, ok, reason, message, currentContext, server }
+  const [authState, setAuthState] = useState({ checked: false, ok: false });
+  const [authRetrying, setAuthRetrying] = useState(false);
+  const [forceConfigModal, setForceConfigModal] = useState(false);
   const [selectedNamespaces, setSelectedNamespaces] = useState(['all']);
   const [namespaces, setNamespaces] = useState([]);
   const [resourceType, setResourceType] = useState('overview');
   const [allResources, setAllResources] = useState({});
   const [selectedResource, setSelectedResource] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [focusResource, setFocusResource] = useState(null); // { type, namespace, name }
   const [focusNode, setFocusNode] = useState(null);
@@ -54,39 +61,68 @@ function App() {
     config: false
   });
 
+  const authOk = authState.ok;
+
   useEffect(() => {
     fetchConfigStatus();
   }, []);
 
+  // Once a kubeconfig is parsed, verify the credentials actually work before
+  // loading the app (unless the user asked to switch configs).
   useEffect(() => {
-    if (configStatus.loaded) {
-      fetchNamespaces();
-    }
-  }, [configStatus]);
+    if (configStatus.loaded && !forceConfigModal) checkAuth();
+  }, [configStatus.loaded, forceConfigModal]);
 
   useEffect(() => {
-    if (configStatus.loaded && !STANDALONE_RESOURCE_TYPES.includes(resourceType)) {
+    if (authOk) fetchNamespaces();
+  }, [authOk]);
+
+  useEffect(() => {
+    if (authOk && !STANDALONE_RESOURCE_TYPES.includes(resourceType)) {
       fetchResources();
     }
-  }, [selectedNamespaces, resourceType, configStatus.loaded, namespaces]);
+  }, [selectedNamespaces, resourceType, authOk, namespaces]);
 
   const fetchConfigStatus = async () => {
     try {
       const response = await axios.get('/api/config/status');
       setConfigStatus(response.data);
-      setError(null);
+      setServerUnreachable(false);
     } catch (err) {
-      setError('Failed to reach the server');
+      setServerUnreachable(true);
       setConfigStatus({ loaded: false, contexts: [] });
     } finally {
       setConfigChecked(true);
     }
   };
 
+  // Verify the loaded kubeconfig can authenticate + reach the cluster.
+  const checkAuth = async () => {
+    try {
+      const { data } = await axios.get('/api/config/auth');
+      setAuthState({ ...data, checked: true });
+      if (!data.ok && data.limited) toast.info(data.message, { title: 'Limited access' });
+    } catch (err) {
+      setAuthState({
+        checked: true, ok: false, reason: 'error',
+        message: 'Failed to reach the backend server on port 3001.',
+      });
+    }
+  };
+
+  const retryAuth = async () => {
+    setAuthRetrying(true);
+    if (serverUnreachable) await fetchConfigStatus();
+    await checkAuth();
+    setAuthRetrying(false);
+  };
+
   // Load a kubeconfig from a user-provided path; returns an error string or null
   const loadConfigFromPath = async (filePath) => {
     try {
       await axios.post('/api/config/load', { filePath });
+      setForceConfigModal(false);
+      setAuthState({ checked: false, ok: false }); // re-gate on the new config
       await fetchConfigStatus();
       return null;
     } catch (err) {
@@ -99,7 +135,7 @@ function App() {
       const response = await axios.get('/api/namespaces');
       setNamespaces(['all', ...response.data.namespaces]);
     } catch (err) {
-      setError('Failed to fetch namespaces');
+      toast.error('Failed to fetch namespaces', { title: 'Namespaces' });
     }
   };
 
@@ -119,7 +155,6 @@ function App() {
         const res = await axios.get('/api/storage');
         if (fetchId !== fetchIdRef.current) return;
         setAllResources(res.data);
-        setError(null);
         return;
       }
 
@@ -155,9 +190,8 @@ function App() {
 
       if (fetchId !== fetchIdRef.current) return;
       setAllResources(allData);
-      setError(null);
     } catch (err) {
-      if (fetchId === fetchIdRef.current) setError('Failed to fetch resources');
+      if (fetchId === fetchIdRef.current) toast.error('Failed to fetch resources', { title: 'Resources' });
     } finally {
       if (fetchId === fetchIdRef.current) setLoading(false);
     }
@@ -220,11 +254,39 @@ function App() {
 
   const getTotalCount = () => (allResources[pluralKey(resourceType)] || []).length;
 
+  // ---- gate: what to render before the app is ready ----
+  const showConfigModal = configChecked && !serverUnreachable && (!configStatus.loaded || forceConfigModal);
+  const checkingAuth = configStatus.loaded && !forceConfigModal && !authState.checked;
+  const showAuthError = configStatus.loaded && !forceConfigModal && authState.checked && !authState.ok;
+
   return (
     <div className="app-lens">
-      {error && <div className="error-banner">{error}</div>}
+      {serverUnreachable && configChecked && (
+        <AuthErrorModal
+          auth={{ reason: 'error', message: 'Cannot reach the backend server on port 3001. Is it running?' }}
+          onRetry={retryAuth}
+          retrying={authRetrying}
+        />
+      )}
 
-      {configStatus.loaded ? (
+      {!serverUnreachable && showConfigModal && (
+        <KubeConfigModal
+          defaultPath={configStatus.defaultPath}
+          exists={configStatus.exists}
+          onSubmit={loadConfigFromPath}
+        />
+      )}
+
+      {!serverUnreachable && showAuthError && (
+        <AuthErrorModal
+          auth={authState}
+          onRetry={retryAuth}
+          onChangeConfig={() => setForceConfigModal(true)}
+          retrying={authRetrying}
+        />
+      )}
+
+      {authOk ? (
         <div className="layout-lens">
           <Navigation
             configStatus={configStatus}
@@ -284,12 +346,14 @@ function App() {
         <div className="loading-state">
           <Loader label="Loading kubeconfig…" size={36} />
         </div>
+      ) : checkingAuth ? (
+        <div className="loading-state">
+          <Loader label="Checking cluster authentication…" size={36} />
+        </div>
       ) : (
-        <KubeConfigModal
-          defaultPath={configStatus.defaultPath}
-          exists={configStatus.exists}
-          onSubmit={loadConfigFromPath}
-        />
+        // A modal (config / auth / server error) is overlaid above; keep a
+        // neutral backdrop underneath it.
+        <div className="loading-state" />
       )}
     </div>
   );

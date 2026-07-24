@@ -147,6 +147,77 @@ app.post('/api/config/context', (req, res) => {
   }
 });
 
+// ------------------------------------------------------------------
+// Authentication / connectivity check
+//
+// /api/config/status only tells us the kubeconfig file *parsed*. It does not
+// tell us whether the credentials actually work — a token can be expired, the
+// API server unreachable, TLS untrusted, or an exec auth plugin (aws-iam-
+// authenticator, gke-gcloud-auth-plugin, …) missing. This endpoint makes one
+// lightweight authenticated call and classifies the outcome so the UI can show
+// an actionable popup before loading the app.
+// ------------------------------------------------------------------
+const currentServerUrl = () => {
+  try { return kubeConfig?.getCurrentCluster()?.server || null; } catch { return null; }
+};
+
+const classifyClusterError = (error) => {
+  const httpStatus = error?.statusCode ?? error?.response?.statusCode ?? error?.body?.code;
+  const code = error?.code || error?.cause?.code;
+  const msg = error?.body?.message || error?.message || String(error);
+
+  if (httpStatus === 401) {
+    return {
+      ok: false, reason: 'unauthorized',
+      message: 'Authentication failed (HTTP 401). Your credentials were rejected — the token or client certificate may be expired or invalid.'
+    };
+  }
+  if (httpStatus === 403) {
+    // Credentials are valid; the user simply can't list namespaces. Still authenticated.
+    return {
+      ok: true, authenticated: true, reachable: true, limited: true,
+      message: 'Authenticated, but this user has limited RBAC permissions.'
+    };
+  }
+  const tlsCodes = ['CERT_HAS_EXPIRED', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'ERR_TLS_CERT_ALTNAME_INVALID'];
+  if (code && tlsCodes.includes(code)) {
+    return { ok: false, reason: 'tls', message: `TLS certificate error (${code}) contacting the cluster API server.` };
+  }
+  if (code && ['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH', 'EAI_AGAIN', 'ECONNRESET'].includes(code)) {
+    return { ok: false, reason: 'unreachable', message: `Cannot reach the cluster API server (${code}). Check the server URL, your VPN/network, or that the cluster is running.` };
+  }
+  if (code === 'ENOENT' || /exec plugin|no such file|ENOENT|not found|credential plugin/i.test(msg)) {
+    return {
+      ok: false, reason: 'exec-plugin',
+      message: `Failed to run the kubeconfig auth plugin: ${msg}. Ensure the required CLI (e.g. aws-iam-authenticator, gke-gcloud-auth-plugin) is installed and on PATH.`
+    };
+  }
+  return { ok: false, reason: 'error', message: msg };
+};
+
+const checkClusterAuth = async () => {
+  if (!kubeConfig) return { ok: false, reason: 'no-config', message: 'No kubeconfig is loaded.' };
+  const server = currentServerUrl();
+  try {
+    const core = kubeConfig.makeApiClient(k8s.CoreV1Api);
+    // Lightweight authenticated request (limit=1). 200 ⇒ authenticated + reachable.
+    await core.listNamespace(undefined, undefined, undefined, undefined, undefined, 1);
+    return { ok: true, authenticated: true, reachable: true, currentContext, server };
+  } catch (error) {
+    return { ...classifyClusterError(error), currentContext, server };
+  }
+};
+
+// Always responds 200 with an `ok` flag so the client can render details
+// (rather than having to catch an HTTP error).
+app.get('/api/config/auth', async (req, res) => {
+  try {
+    res.json(await checkClusterAuth());
+  } catch (error) {
+    res.json({ ok: false, reason: 'error', message: error.message });
+  }
+});
+
 app.get('/api/namespaces', async (req, res) => {
   try {
     if (!kubeConfig) return res.status(400).json({ error: 'No kubeconfig loaded' });
@@ -1766,6 +1837,15 @@ wss.on('connection', async (browserWs, req) => {
     try { stdin.end(); } catch (e) {}
     try { k8sWs && k8sWs.close(); } catch (e) {}
   });
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use — another instance of the app (or a process using this port) is already running. Stop it and try again.`);
+  } else {
+    console.error(`Server error: ${err.message}`);
+  }
+  process.exit(1);
 });
 
 server.listen(PORT, () => {

@@ -81,17 +81,23 @@ function startServer(fixedPath) {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
+  let stderrTail = '';
   serverProcess.stdout.on('data', (d) => process.stdout.write(`[server] ${d}`));
-  serverProcess.stderr.on('data', (d) => process.stderr.write(`[server] ${d}`));
+  serverProcess.stderr.on('data', (d) => {
+    stderrTail = (stderrTail + d).slice(-2000);
+    process.stderr.write(`[server] ${d}`);
+  });
 
   serverProcess.on('exit', (code, signal) => {
     serverProcess = null;
     // If the server dies unexpectedly while the app is up, surface it.
     if (!app.isQuitting && code !== 0 && code !== null) {
-      dialog.showErrorBox(
-        'Kubernetes Manager',
-        `The backend exited unexpectedly (code ${code}${signal ? `, signal ${signal}` : ''}).`
-      );
+      const portTaken = /EADDRINUSE|already in use/i.test(stderrTail);
+      const detail = portTaken
+        ? `Port ${BACKEND_PORT} is already in use — another copy of the app or a process on that port is running. Quit it and relaunch.`
+        : `The backend exited unexpectedly (code ${code}${signal ? `, signal ${signal}` : ''}).` +
+          (stderrTail.trim() ? `\n\n${stderrTail.trim().split('\n').slice(-4).join('\n')}` : '');
+      dialog.showErrorBox('Kubernetes Manager', detail);
       app.quit();
     }
   });
@@ -165,9 +171,17 @@ function createWindow() {
 }
 
 async function boot() {
-  const fixedPath = resolveUserPath();
-  startServer(fixedPath);
   createWindow();
+
+  // If a backend is already serving on the port (e.g. `npm run dev`, or a
+  // second launch), reuse it instead of spawning a duplicate that would fail
+  // to bind the port and exit.
+  if (await pingServer()) {
+    if (mainWindow) mainWindow.loadURL(SERVER_URL);
+    return;
+  }
+
+  startServer(resolveUserPath());
 
   const ready = await waitForServer();
   if (!mainWindow) return; // window closed while we waited
@@ -178,7 +192,7 @@ async function boot() {
     dialog.showErrorBox(
       'Kubernetes Manager',
       `The backend did not become ready on port ${BACKEND_PORT} within 30s.\n` +
-        `If another instance is using the port, quit it and relaunch.`
+        `Something else may be using the port. Free it and relaunch.`
     );
     app.quit();
   }
