@@ -2,6 +2,8 @@
 
 A modern, Lens-style web UI for browsing and operating a Kubernetes cluster using your local `kubeconfig`.
 
+![Kubernetes Manager — cluster dashboard](docs/screenshot-dashboard.png)
+
 ## Features
 
 - **Cluster overview** — live dashboard (node/pod health donuts, workload charts, capacity)
@@ -62,7 +64,17 @@ Open **http://localhost:3001**.
 
 ## Run — Docker
 
-The image bundles Node, `kubectl`, and `helm`, and serves the UI + API on port `3001`.
+The image bundles Node and `kubectl`, and serves the UI + API on port `3001`.
+
+**Run the published image** (from GitHub Container Registry):
+
+```bash
+docker run --rm -p 8080:3001 \
+  -v "$HOME/.kube:/root/.kube:ro" \
+  ghcr.io/OWNER/k8s-manager:latest
+```
+
+**Or build it locally:**
 
 ```bash
 docker build -t k8s-manager .
