@@ -56,7 +56,7 @@ EXPOSE 3001
 # source/revision/created automatically; set IMAGE_SOURCE for manual builds.
 # ------------------------------------------------------------------
 ARG APP_VERSION="0.0.0"
-LABEL org.opencontainers.image.title="Kubernetes Manager" \
+LABEL org.opencontainers.image.title="Kubernetes Manager UI" \
       org.opencontainers.image.description="Web UI to browse and operate Kubernetes clusters — workloads, nodes, events, logs, in-browser exec/terminal, service port-forwarding, Helm releases, RBAC and CRDs. Reads your kubeconfig and serves the UI + REST API on port 3001." \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.licenses="MIT"
