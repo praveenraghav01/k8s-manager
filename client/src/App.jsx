@@ -14,6 +14,8 @@ import Namespaces from './components/Namespaces';
 import KubeConfigModal from './components/KubeConfigModal';
 import AuthErrorModal from './components/AuthErrorModal';
 import AccessControl from './components/AccessControl';
+import Assistant from './components/Assistant';
+import ClusterRail from './components/ClusterRail';
 import { useToast } from './components/Toast';
 
 // Views that load their own data and should NOT trigger the shared resource fetch.
@@ -115,6 +117,29 @@ function App() {
     if (serverUnreachable) await fetchConfigStatus();
     await checkAuth();
     setAuthRetrying(false);
+  };
+
+  // Switch the active cluster/context (from the pinned rail or the selector).
+  const switchContext = async (ctx) => {
+    if (!ctx || ctx === configStatus.currentContext) return;
+    try {
+      const resp = await fetch('/api/config/context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contextName: ctx }),
+      });
+      if (!resp.ok) throw new Error('switch failed');
+      // Reset the view for the new cluster, then reload config + re-check auth.
+      setResourceType('overview');
+      setSelectedResource(null);
+      setSelectedNamespaces(['all']);
+      setAllResources({});
+      setNamespaces([]);
+      await fetchConfigStatus();
+      await checkAuth();
+    } catch (err) {
+      toast.error(`Failed to switch to ${ctx}`, { title: 'Cluster' });
+    }
   };
 
   // Load a kubeconfig from a user-provided path; returns an error string or null
@@ -286,8 +311,25 @@ function App() {
         />
       )}
 
+      {authOk && (
+        <Assistant
+          context={{
+            view: resourceType,
+            namespaces: selectedNamespaces,
+            selected: selectedResource
+              ? { type: resourceType, namespace: selectedResource.namespace, name: selectedResource.name }
+              : null,
+          }}
+        />
+      )}
+
       {authOk ? (
         <div className="layout-lens">
+          <ClusterRail
+            contexts={configStatus.contexts || []}
+            currentContext={configStatus.currentContext}
+            onSwitch={switchContext}
+          />
           <Navigation
             configStatus={configStatus}
             onConfigChange={fetchConfigStatus}

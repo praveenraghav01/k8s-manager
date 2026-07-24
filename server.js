@@ -14,6 +14,7 @@ import { WebSocketServer } from 'ws';
 import * as k8s from '@kubernetes/client-node';
 import yaml from 'js-yaml';
 import compression from 'compression';
+import { registerAssistant } from './assistant.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -83,6 +84,28 @@ if (fs.existsSync(defaultPath)) {
 }
 
 // API Endpoints
+
+// App version — single source of truth is the repo VERSION file; falls back to
+// package.json (VERSION isn't shipped in the Docker image, but package.json is
+// and is kept in sync by scripts/sync-version.mjs).
+let APP_VERSION = null;
+const getAppVersion = () => {
+  if (APP_VERSION) return APP_VERSION;
+  try {
+    APP_VERSION = fs.readFileSync(path.join(__dirname, 'VERSION'), 'utf8').trim();
+  } catch {
+    try {
+      APP_VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version;
+    } catch {
+      APP_VERSION = 'unknown';
+    }
+  }
+  return APP_VERSION;
+};
+
+app.get('/api/version', (req, res) => {
+  res.json({ version: getAppVersion() });
+});
 
 app.get('/api/config/status', (req, res) => {
   if (!kubeConfig) {
@@ -1756,6 +1779,16 @@ app.get('*', (req, res, next) => {
 });
 
 // ============================================================
+// AI assistant (read-only, agentic, streams over SSE)
+// ============================================================
+registerAssistant(app, {
+  k8s,
+  getKubeConfig: () => kubeConfig,
+  getCurrentContext: () => currentContext,
+  helmReleases: async () => latestHelmReleases(await listHelmReleaseSecrets()),
+});
+
+// ============================================================
 // Interactive shell over WebSocket (real TTY via k8s exec)
 // ============================================================
 const server = http.createServer(app);
@@ -1839,14 +1872,21 @@ wss.on('connection', async (browserWs, req) => {
   });
 });
 
-server.on('error', (err) => {
+let handledFatal = false;
+const handleServerError = (err) => {
+  if (handledFatal) return;
+  handledFatal = true;
   if (err.code === 'EADDRINUSE') {
     console.error(`Port ${PORT} is already in use — another instance of the app (or a process using this port) is already running. Stop it and try again.`);
   } else {
     console.error(`Server error: ${err.message}`);
   }
   process.exit(1);
-});
+};
+// The WebSocketServer (created with { server }) re-emits the HTTP server's
+// listen errors on itself, so guard both to avoid an unhandled 'error' throw.
+server.on('error', handleServerError);
+wss.on('error', handleServerError);
 
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
