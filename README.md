@@ -71,7 +71,7 @@ The image bundles Node and `kubectl`, and serves the UI + API on port `3001`.
 ```bash
 docker run --rm -p 8080:3001 \
   -v "$HOME/.kube:/root/.kube:ro" \
-  praveenraghav/k8s-manager:latest
+  praveenraghav/k8s-manager-ui:latest
 ```
 
 **Or build it locally:**
