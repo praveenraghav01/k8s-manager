@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Icon from './Icons';
+import Markdown from './Markdown';
 
 // Floating AI assistant. Streams a read-only, tool-using debugging session from
 // /api/assistant/chat (SSE) and renders tokens + tool-call chips live.
@@ -200,18 +201,27 @@ export default function Assistant({ context }) {
 
             {messages.map((m, i) => (
               <div key={i} className={`assistant-msg ${m.role}`}>
-                {(m.tools || []).length > 0 && (
-                  <div className="assistant-tools">
-                    {m.tools.map((t, j) => (
-                      <span key={j} className="assistant-tool-chip"><Icon name="search" size={11} /> {toolLabel(t)}</span>
-                    ))}
-                  </div>
+                {m.role === 'assistant' && (
+                  <span className="assistant-avatar" aria-hidden="true"><Icon name="sparkles" size={13} /></span>
                 )}
-                {m.text && <div className="assistant-text">{m.text}</div>}
-                {m.role === 'assistant' && !m.text && !m.error && busy && i === messages.length - 1 && (
-                  <div className="assistant-thinking">Investigating…</div>
-                )}
-                {m.error && <div className="assistant-error"><Icon name="warning" size={13} /> {m.error}</div>}
+                <div className="assistant-msg-content">
+                  {(m.tools || []).length > 0 && (
+                    <div className="assistant-tools">
+                      {m.tools.map((t, j) => (
+                        <span key={j} className="assistant-tool-chip"><Icon name="search" size={11} /> {toolLabel(t)}</span>
+                      ))}
+                    </div>
+                  )}
+                  {m.text && (
+                    <div className="assistant-text">
+                      {m.role === 'assistant' ? <Markdown text={m.text} /> : m.text}
+                    </div>
+                  )}
+                  {m.role === 'assistant' && !m.text && !m.error && busy && i === messages.length - 1 && (
+                    <div className="assistant-thinking"><span></span><span></span><span></span></div>
+                  )}
+                  {m.error && <div className="assistant-error"><Icon name="warning" size={13} /> {m.error}</div>}
+                </div>
               </div>
             ))}
           </div>

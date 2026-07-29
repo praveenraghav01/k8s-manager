@@ -157,12 +157,16 @@ app.post('/api/config/context', (req, res) => {
   }
 
   try {
-    // Use kubectl to set the context
-    execSync(`kubectl config use-context ${contextName}`);
+    // Switch the active context in-memory. This avoids shelling out to kubectl
+    // (which may be absent in a packaged app and permanently rewrites the user's
+    // kubeconfig on disk). Every handler builds its API client fresh via
+    // kubeConfig.makeApiClient(), so subsequent requests use the new context.
+    kubeConfig.setCurrentContext(contextName);
+    currentContext = kubeConfig.getCurrentContext();
 
-    // Reload kubeconfig to get updated context
-    const configPath = getKubeConfigPath();
-    loadKubeConfig(configPath);
+    // Drop everything cached against the previous cluster so the UI doesn't show
+    // stale data (namespaces, resources, storage, rbac, …) after the switch.
+    cache.clear();
 
     res.json({ success: true, currentContext });
   } catch (error) {

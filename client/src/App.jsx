@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import './App.css';
 import Navigation from './components/Navigation';
-import ResourceViewer from './components/ResourceViewer';
+import RefreshControl, { REFRESH_OPTIONS } from './components/RefreshControl';
+import ResourceViewer, { TAB_KEYS } from './components/ResourceViewer';
 import Overview from './components/Overview';
 import Cluster from './components/Cluster';
 import Nodes from './components/Nodes';
@@ -50,6 +51,13 @@ function App() {
   const [focusNode, setFocusNode] = useState(null);
   const [crSelection, setCrSelection] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  // Auto-refresh cadence (key into REFRESH_OPTIONS). Defaults to 'auto' (= 1 min).
+  const [refreshInterval, setRefreshInterval] = useState(() => localStorage.getItem('refreshInterval') || 'auto');
+  const handleRefreshRef = useRef(() => {});
+
+  useEffect(() => { localStorage.setItem('refreshInterval', refreshInterval); }, [refreshInterval]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -104,11 +112,13 @@ function App() {
       const { data } = await axios.get('/api/config/auth');
       setAuthState({ ...data, checked: true });
       if (!data.ok && data.limited) toast.info(data.message, { title: 'Limited access' });
+      return data.ok;
     } catch (err) {
       setAuthState({
         checked: true, ok: false, reason: 'error',
         message: 'Failed to reach the backend server on port 3001.',
       });
+      return false;
     }
   };
 
@@ -136,11 +146,46 @@ function App() {
       setAllResources({});
       setNamespaces([]);
       await fetchConfigStatus();
-      await checkAuth();
+      const ok = await checkAuth();
+      // `authOk` was already true, so the effect that fetches namespaces won't
+      // re-fire on its own — repopulate the new cluster's data explicitly, or the
+      // whole app shows empty (0 pods/deployments/…) after a pin switch.
+      if (ok) await fetchNamespaces();
+      toast.success(`Switched to ${ctx}`, { title: 'Cluster' });
     } catch (err) {
       toast.error(`Failed to switch to ${ctx}`, { title: 'Cluster' });
     }
   };
+
+  // Global refresh for the active page. App-managed views (Overview + resource
+  // lists) reload via the shared fetch; self-fetching views (Cluster, Nodes,
+  // Topology, Helm, Namespaces, Custom Resources, Access Control) are remounted
+  // by bumping the nonce, which re-runs their mount-time data loads.
+  const handleRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      if (!STANDALONE_RESOURCE_TYPES.includes(resourceType)) {
+        await fetchNamespaces();
+        await fetchResources();
+      }
+      setRefreshNonce(n => n + 1);
+    } finally {
+      // brief spin so the action is perceptible even when the fetch is instant
+      setTimeout(() => setRefreshing(false), 400);
+    }
+  };
+  handleRefreshRef.current = handleRefresh;
+
+  // Auto-refresh timer. Fires the same handleRefresh used by the button, so it
+  // works on every page. Uses a ref so the interval isn't torn down on each
+  // page change / render — only when the cadence itself changes.
+  useEffect(() => {
+    const ms = REFRESH_OPTIONS.find(o => o.key === refreshInterval)?.ms || 0;
+    if (!ms || !authOk) return;
+    const id = setInterval(() => { handleRefreshRef.current?.(); }, ms);
+    return () => clearInterval(id);
+  }, [refreshInterval, authOk]);
 
   // Load a kubeconfig from a user-provided path; returns an error string or null
   const loadConfigFromPath = async (filePath) => {
@@ -325,6 +370,13 @@ function App() {
 
       {authOk ? (
         <div className="layout-lens">
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            refreshInterval={refreshInterval}
+            onSetRefreshInterval={setRefreshInterval}
+            row2={(TAB_KEYS.includes(resourceType) && resourceType !== 'overview') || resourceType === 'accessControl'}
+          />
           <ClusterRail
             contexts={configStatus.contexts || []}
             currentContext={configStatus.currentContext}
@@ -333,6 +385,7 @@ function App() {
           <Navigation
             configStatus={configStatus}
             onConfigChange={fetchConfigStatus}
+            onSwitchContext={switchContext}
             resourceType={resourceType}
             onResourceTypeChange={setResourceType}
             navExpanded={navExpanded}
@@ -353,19 +406,19 @@ function App() {
               onResourceTypeChange={setResourceType}
             />
           ) : resourceType === 'cluster' ? (
-            <Cluster configStatus={configStatus} />
+            <Cluster key={`cluster-${refreshNonce}`} configStatus={configStatus} />
           ) : resourceType === 'nodes' ? (
-            <Nodes focusNode={focusNode} onFocusHandled={() => setFocusNode(null)} onNavigate={nav} />
+            <Nodes key={`nodes-${refreshNonce}`} focusNode={focusNode} onFocusHandled={() => setFocusNode(null)} onNavigate={nav} />
           ) : resourceType === 'namespaces' ? (
-            <Namespaces onNavigate={nav} />
+            <Namespaces key={`namespaces-${refreshNonce}`} onNavigate={nav} />
           ) : resourceType === 'topology' ? (
-            <Topology namespaces={namespaces} />
+            <Topology namespaces={namespaces} refreshSignal={refreshNonce} />
           ) : resourceType === 'helm' ? (
-            <Helm />
+            <Helm key={`helm-${refreshNonce}`} />
           ) : resourceType === 'customResources' ? (
-            <CustomResourceDetail selection={crSelection} onSelect={setCrSelection} />
+            <CustomResourceDetail key={`cr-${refreshNonce}`} selection={crSelection} onSelect={setCrSelection} />
           ) : resourceType === 'accessControl' ? (
-            <AccessControl onNavigate={nav} />
+            <AccessControl key={`ac-${refreshNonce}`} onNavigate={nav} />
           ) : (
             <ResourceViewer
               resourceType={resourceType}
