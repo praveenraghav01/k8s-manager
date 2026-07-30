@@ -6,6 +6,7 @@ import ContextSelector from './ContextSelector';
 export default function Navigation({
   configStatus,
   onConfigChange,
+  onSwitchContext,
   resourceType,
   onResourceTypeChange,
   navExpanded,
@@ -15,19 +16,10 @@ export default function Navigation({
   theme,
   onToggleTheme
 }) {
-  const handleContextChange = async (context) => {
-    try {
-      const response = await fetch('/api/config/context', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contextName: context })
-      });
-      if (response.ok && onConfigChange) {
-        onConfigChange();
-      }
-    } catch (err) {
-      console.error('Failed to change context:', err);
-    }
+  // Route context changes through the app-level switch so the new cluster's
+  // namespaces + resources are re-fetched (a plain POST leaves the UI empty).
+  const handleContextChange = (context) => {
+    if (onSwitchContext) return onSwitchContext(context);
   };
 
   const mainSections = [

@@ -58,7 +58,7 @@ const statusClass = (status) => {
   return 'failed';
 };
 
-export default function Topology({ namespaces = [] }) {
+export default function Topology({ namespaces = [], refreshSignal = 0 }) {
   const realNamespaces = useMemo(() => namespaces.filter(n => n !== 'all'), [namespaces]);
   const [namespace, setNamespace] = useState('');
   const [data, setData] = useState({ nodes: [], edges: [] });
@@ -79,6 +79,14 @@ export default function Topology({ namespaces = [] }) {
   useEffect(() => {
     if (namespace) fetchTopology(namespace);
   }, [namespace]);
+
+  // Re-fetch on a global refresh WITHOUT remounting, so the selected namespace
+  // (and zoom/pan) are preserved. Skips the initial mount (handled above).
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) { didMountRef.current = true; return; }
+    if (namespace) fetchTopology(namespace);
+  }, [refreshSignal]);
 
   const fetchTopology = async (ns) => {
     setLoading(true);
@@ -242,10 +250,6 @@ export default function Topology({ namespaces = [] }) {
               <option key={ns} value={ns}>{ns}</option>
             ))}
           </select>
-          <button className="cluster-refresh-btn" onClick={() => fetchTopology(namespace)} disabled={loading}>
-            <Icon name="refresh" size={14} />
-            Refresh
-          </button>
         </div>
       </div>
 

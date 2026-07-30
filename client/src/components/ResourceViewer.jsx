@@ -49,7 +49,7 @@ const RESOURCE_LABELS = {
 
 // Types shown as tabs at the top of the workloads viewer (Config/Network/etc.
 // are navigated from the sidebar and get no tab strip).
-const TAB_KEYS = ['overview', 'pod', 'service', 'deployment', 'statefulSet', 'daemonSet', 'replicaSet', 'replicationController', 'job', 'cronJob', 'events'];
+export const TAB_KEYS = ['overview', 'pod', 'service', 'deployment', 'statefulSet', 'daemonSet', 'replicaSet', 'replicationController', 'job', 'cronJob', 'events'];
 
 export default function ResourceViewer({
   resourceType,
