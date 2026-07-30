@@ -65,12 +65,14 @@ Open **http://localhost:3001**.
 ## Run — Docker
 
 The image bundles Node and `kubectl`, and serves the UI + API on port `3001`.
+It runs as a **non-root user** (`node`), so mount your kubeconfig at
+`/home/node/.kube/config`.
 
 **Run the published image** (from GitHub Container Registry):
 
 ```bash
 docker run --rm -p 8080:3001 \
-  -v "$HOME/.kube:/root/.kube:ro" \
+  -v "$HOME/.kube:/home/node/.kube:ro" \
   praveenraghav/k8s-manager-ui:latest
 ```
 
@@ -80,16 +82,23 @@ docker run --rm -p 8080:3001 \
 docker build -t k8s-manager .
 
 docker run --rm -p 8080:3001 \
-  -v "$HOME/.kube:/root/.kube:ro" \
+  -v "$HOME/.kube:/home/node/.kube:ro" \
   k8s-manager
 ```
 
 Open **http://localhost:8080**.
 
 Notes:
-- Mount your kubeconfig at `/root/.kube/config` (as above) or pass `-e KUBECONFIG=/path/inside/container`.
+- The container runs as the unprivileged `node` user. Mount your kubeconfig at
+  `/home/node/.kube/config` (as above) or pass `-e KUBECONFIG=/path/inside/container`.
+- `helm` is **not** installed in the image — Helm releases are read via the
+  Kubernetes API. Only `kubectl` is bundled.
 - If your kubeconfig references cloud auth plugins (EKS/GKE/AKS exec credentials), those CLIs must be available inside the container too, or use a static-token kubeconfig.
 - The build auto-selects `amd64`/`arm64` via BuildKit's `TARGETARCH`.
+- **Security:** built on `node:22-alpine`, OS packages patched (`apk upgrade`),
+  npm removed from the runtime layer, runs as non-root, and patched transitive
+  npm deps pinned via `overrides` — scanned clean with Docker Scout except one
+  CVE inside the upstream `kubectl` binary.
 
 ## Run — Mac app (Electron)
 

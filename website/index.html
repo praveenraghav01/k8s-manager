@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kubernetes Manager — a modern, Lens-style UI for your cluster</title>
+<meta name="description" content="A modern, Lens-style web UI to browse and operate your Kubernetes cluster from your local kubeconfig. Live dashboards, pod logs, interactive shells, topology, Helm, and an AI assistant. Download for macOS or run with Docker." />
+<meta property="og:title" content="Kubernetes Manager" />
+<meta property="og:description" content="A modern, Lens-style UI for browsing and operating your Kubernetes cluster." />
+<meta property="og:type" content="website" />
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+<style>
+  :root {
+    --bg: #0a0d14;
+    --bg-2: #0e121c;
+    --panel: #11151f;
+    --panel-2: #151a26;
+    --border: #202634;
+    --border-2: #2a3242;
+    --text: #e6e9f0;
+    --text-dim: #9aa3b4;
+    --text-mute: #6b7385;
+    --brand: #326ce5;
+    --brand-light: #4a8cff;
+    --brand-dark: #1b4fc4;
+    --green: #3fb950;
+    --amber: #d29922;
+    --red: #f85149;
+    --purple: #a371f7;
+    --cyan: #39c5cf;
+    --radius: 16px;
+    --maxw: 1180px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  img { max-width: 100%; display: block; }
+  section { position: relative; }
+
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- Background glow ---------- */
+  .bg-glow {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(700px 500px at 15% -5%, rgba(74,140,255,.16), transparent 60%),
+      radial-gradient(800px 600px at 100% 0%, rgba(163,113,247,.10), transparent 55%),
+      radial-gradient(900px 700px at 50% 120%, rgba(50,108,229,.10), transparent 60%);
+  }
+
+  /* ---------- Nav ---------- */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(14px);
+    background: rgba(10,13,20,.72);
+    border-bottom: 1px solid var(--border);
+  }
+  nav { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: -.01em; }
+  .brand .logo { width: 34px; height: 34px; border-radius: 9px; box-shadow: 0 6px 18px rgba(27,79,196,.4); }
+  .brand small { display: block; font-size: 10px; letter-spacing: .18em; color: var(--text-mute); font-weight: 600; }
+  .nav-links { display: flex; align-items: center; gap: 28px; }
+  .nav-links a { color: var(--text-dim); font-size: 14.5px; font-weight: 500; transition: color .15s; }
+  .nav-links a:hover { color: var(--text); }
+  .nav-cta {
+    background: linear-gradient(135deg, var(--brand-light), var(--brand-dark));
+    color: #fff !important; padding: 9px 18px; border-radius: 10px; font-weight: 600;
+    box-shadow: 0 4px 16px rgba(50,108,229,.35);
+    transition: transform .15s, box-shadow .15s;
+  }
+  .nav-cta:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(50,108,229,.5); }
+  .menu-btn { display: none; background: none; border: 0; color: var(--text); cursor: pointer; }
+
+  /* ---------- Hero ---------- */
+  .hero { padding: 90px 0 60px; text-align: center; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(50,108,229,.12); border: 1px solid rgba(74,140,255,.28);
+    color: #bcd2ff; padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 500;
+    margin-bottom: 26px;
+  }
+  .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+  h1 {
+    font-size: clamp(38px, 6vw, 68px); line-height: 1.05; letter-spacing: -.03em; font-weight: 800;
+    margin: 0 auto 22px; max-width: 15ch;
+  }
+  h1 .grad {
+    background: linear-gradient(120deg, var(--brand-light), var(--purple));
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero p.sub { font-size: clamp(17px, 2.2vw, 20px); color: var(--text-dim); max-width: 60ch; margin: 0 auto 38px; }
+
+  .cta-row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 18px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px; font-size: 15.5px; font-weight: 600;
+    padding: 14px 26px; border-radius: 12px; cursor: pointer; border: 1px solid transparent;
+    transition: transform .15s, box-shadow .15s, background .15s, border-color .15s;
+  }
+  .btn svg { width: 20px; height: 20px; }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--brand-light), var(--brand-dark)); color: #fff;
+    box-shadow: 0 8px 26px rgba(50,108,229,.4);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(50,108,229,.55); }
+  .btn-ghost { background: var(--panel); color: var(--text); border-color: var(--border-2); }
+  .btn-ghost:hover { transform: translateY(-2px); border-color: var(--brand-light); background: var(--panel-2); }
+  .hero .fineprint { color: var(--text-mute); font-size: 13.5px; }
+
+  /* ---------- Screenshot ---------- */
+  .shot-wrap { margin-top: 56px; position: relative; }
+  .shot-frame {
+    border-radius: 14px; overflow: hidden; border: 1px solid var(--border-2);
+    box-shadow: 0 40px 120px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.03) inset;
+    background: var(--panel);
+  }
+  .shot-bar {
+    display: flex; align-items: center; gap: 8px; padding: 11px 16px;
+    background: var(--panel-2); border-bottom: 1px solid var(--border);
+  }
+  .shot-bar .tl { width: 12px; height: 12px; border-radius: 50%; }
+  .shot-bar .tl.r { background: #ff5f57; } .shot-bar .tl.y { background: #febc2e; } .shot-bar .tl.g { background: #28c840; }
+  .shot-bar .addr { margin-left: 14px; font-family: var(--mono); font-size: 12px; color: var(--text-mute); }
+  .shot-frame img { width: 100%; }
+  .shot-glow { position: absolute; inset: -40px -20px auto; height: 200px; background: radial-gradient(closest-side, rgba(74,140,255,.35), transparent); filter: blur(40px); z-index: -1; }
+
+  /* ---------- Trust strip ---------- */
+  .strip { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin-top: 80px; background: rgba(14,18,28,.5); }
+  .strip .wrap { display: flex; flex-wrap: wrap; gap: 40px 60px; justify-content: center; padding: 34px 24px; }
+  .strip .stat { text-align: center; }
+  .strip .stat b { display: block; font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
+  .strip .stat span { font-size: 13px; color: var(--text-mute); }
+  .strip .stat b .grad { background: linear-gradient(120deg, var(--brand-light), var(--purple)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+
+  /* ---------- Section head ---------- */
+  .sec { padding: 96px 0; }
+  .sec-head { text-align: center; max-width: 62ch; margin: 0 auto 56px; }
+  .sec-head .kicker { color: var(--brand-light); font-weight: 700; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; }
+  .sec-head h2 { font-size: clamp(28px, 4vw, 42px); letter-spacing: -.025em; margin: 12px 0 14px; line-height: 1.1; }
+  .sec-head p { color: var(--text-dim); font-size: 17px; }
+
+  /* ---------- Features grid ---------- */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .card {
+    background: linear-gradient(180deg, var(--panel), var(--bg-2));
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 26px;
+    transition: transform .18s, border-color .18s, box-shadow .18s;
+  }
+  .card:hover { transform: translateY(-4px); border-color: var(--border-2); box-shadow: 0 18px 40px rgba(0,0,0,.35); }
+  .card .ico {
+    width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 18px;
+    background: rgba(50,108,229,.12); border: 1px solid rgba(74,140,255,.2);
+  }
+  .card .ico svg { width: 24px; height: 24px; stroke: var(--brand-light); }
+  .card h3 { font-size: 18px; margin-bottom: 8px; letter-spacing: -.01em; }
+  .card p { color: var(--text-dim); font-size: 14.5px; }
+  .card.i-green .ico { background: rgba(63,185,80,.1); border-color: rgba(63,185,80,.22); } .card.i-green .ico svg { stroke: var(--green); }
+  .card.i-purple .ico { background: rgba(163,113,247,.1); border-color: rgba(163,113,247,.22); } .card.i-purple .ico svg { stroke: var(--purple); }
+  .card.i-cyan .ico { background: rgba(57,197,207,.1); border-color: rgba(57,197,207,.22); } .card.i-cyan .ico svg { stroke: var(--cyan); }
+  .card.i-amber .ico { background: rgba(210,153,34,.1); border-color: rgba(210,153,34,.22); } .card.i-amber .ico svg { stroke: var(--amber); }
+  .card.i-red .ico { background: rgba(248,81,73,.1); border-color: rgba(248,81,73,.22); } .card.i-red .ico svg { stroke: var(--red); }
+
+  /* ---------- AI feature band ---------- */
+  .band { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; }
+  .split .kicker { color: var(--purple); font-weight: 700; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; }
+  .split h2 { font-size: clamp(26px, 3.4vw, 36px); letter-spacing: -.02em; margin: 12px 0 16px; line-height: 1.12; }
+  .split p { color: var(--text-dim); font-size: 16px; margin-bottom: 20px; }
+  .checklist { list-style: none; display: grid; gap: 12px; }
+  .checklist li { display: flex; gap: 12px; align-items: flex-start; color: var(--text-dim); font-size: 15px; }
+  .checklist .ck { flex: none; width: 22px; height: 22px; border-radius: 50%; background: rgba(163,113,247,.15); display: grid; place-items: center; margin-top: 2px; }
+  .checklist .ck svg { width: 13px; height: 13px; stroke: var(--purple); }
+  .chat {
+    background: var(--panel); border: 1px solid var(--border-2); border-radius: var(--radius); overflow: hidden;
+    box-shadow: 0 30px 70px rgba(0,0,0,.45);
+  }
+  .chat-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--panel-2); }
+  .chat-head .spark { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(135deg,var(--purple),var(--brand)); display: grid; place-items: center; }
+  .chat-head .spark svg { width: 15px; height: 15px; stroke: #fff; }
+  .chat-head b { font-size: 14px; } .chat-head span { font-size: 12px; color: var(--text-mute); margin-left: auto; }
+  .chat-body { padding: 20px; display: grid; gap: 14px; }
+  .bubble { padding: 12px 15px; border-radius: 12px; font-size: 14px; max-width: 88%; }
+  .bubble.user { background: rgba(50,108,229,.16); border: 1px solid rgba(74,140,255,.25); margin-left: auto; border-bottom-right-radius: 4px; }
+  .bubble.ai { background: var(--panel-2); border: 1px solid var(--border); border-bottom-left-radius: 4px; color: var(--text-dim); }
+  .bubble.ai code { font-family: var(--mono); font-size: 12.5px; color: var(--cyan); background: rgba(57,197,207,.08); padding: 2px 6px; border-radius: 5px; }
+  .tool-pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); background: var(--bg); border: 1px solid var(--border); padding: 4px 9px; border-radius: 7px; margin: 0 4px 4px 0; }
+  .tool-pill .d { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+
+  /* ---------- Download ---------- */
+  .dl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .dl-card {
+    background: linear-gradient(180deg, var(--panel), var(--bg-2)); border: 1px solid var(--border);
+    border-radius: 18px; padding: 34px; position: relative; overflow: hidden;
+  }
+  .dl-card::before { content: ""; position: absolute; inset: 0 0 auto; height: 3px; background: linear-gradient(90deg, var(--brand-light), var(--purple)); opacity: .8; }
+  .dl-card .head { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+  .dl-card .head .ico { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center; background: var(--panel-2); border: 1px solid var(--border-2); }
+  .dl-card .head .ico svg { width: 24px; height: 24px; fill: var(--text); }
+  .dl-card h3 { font-size: 20px; letter-spacing: -.01em; }
+  .dl-card .meta { font-size: 12.5px; color: var(--text-mute); }
+  .dl-card > p { color: var(--text-dim); font-size: 14.5px; margin: 14px 0 22px; }
+  .dl-card .btn { width: 100%; justify-content: center; }
+
+  .code {
+    background: #05070c; border: 1px solid var(--border); border-radius: 12px;
+    font-family: var(--mono); font-size: 13px; color: #cdd6e4; position: relative; margin-bottom: 14px;
+  }
+  .code .code-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid var(--border); color: var(--text-mute); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; }
+  .code pre { padding: 16px; overflow-x: auto; line-height: 1.7; }
+  .code .cmt { color: var(--text-mute); }
+  .code .flag { color: var(--brand-light); }
+  .code .img { color: var(--green); }
+  .copy-btn {
+    background: var(--panel-2); border: 1px solid var(--border-2); color: var(--text-dim);
+    font-size: 11px; padding: 4px 10px; border-radius: 7px; cursor: pointer; font-family: var(--font);
+    display: inline-flex; align-items: center; gap: 5px; transition: color .15s, border-color .15s;
+  }
+  .copy-btn:hover { color: var(--text); border-color: var(--brand-light); }
+  .copy-btn.ok { color: var(--green); border-color: var(--green); }
+
+  .steps { list-style: none; counter-reset: s; display: grid; gap: 10px; margin-top: 6px; }
+  .steps li { counter-increment: s; display: flex; gap: 12px; align-items: flex-start; font-size: 14px; color: var(--text-dim); }
+  .steps li::before { content: counter(s); flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--panel-2); border: 1px solid var(--border-2); display: grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--brand-light); }
+
+  /* ---------- Prereq ---------- */
+  .prereq { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 40px; }
+  .prereq .tag { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 16px; font-size: 13.5px; color: var(--text-dim); }
+  .prereq .tag code { font-family: var(--mono); color: var(--cyan); }
+
+  /* ---------- CTA footer ---------- */
+  .final { text-align: center; padding: 100px 0; }
+  .final h2 { font-size: clamp(30px, 4.5vw, 48px); letter-spacing: -.03em; margin-bottom: 18px; }
+  .final p { color: var(--text-dim); font-size: 18px; margin-bottom: 34px; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; }
+  footer .wrap { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+  footer .brand small { color: var(--text-mute); }
+  footer .links { display: flex; gap: 24px; }
+  footer .links a { color: var(--text-dim); font-size: 14px; }
+  footer .links a:hover { color: var(--text); }
+  footer .copy { color: var(--text-mute); font-size: 13px; width: 100%; padding-top: 8px; border-top: 1px solid var(--border); }
+
+  /* ---------- Reveal animation ---------- */
+  .reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .split, .dl-grid { grid-template-columns: 1fr; gap: 32px; }
+    .nav-links { display: none; }
+    .menu-btn { display: block; }
+    .nav-links.open {
+      display: flex; flex-direction: column; position: absolute; top: 64px; left: 0; right: 0;
+      background: var(--bg-2); border-bottom: 1px solid var(--border); padding: 20px 24px; gap: 18px;
+    }
+  }
+  @media (max-width: 560px) {
+    .grid { grid-template-columns: 1fr; }
+    .hero { padding: 60px 0 40px; }
+    .btn { width: 100%; justify-content: center; }
+    .cta-row { flex-direction: column; }
+  }
+  @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<div class="bg-glow"></div>
+
+<!-- NAV -->
+<header>
+  <div class="wrap">
+    <nav>
+      <a class="brand" href="#top">
+        <img class="logo" src="assets/icon.svg" alt="Kubernetes Manager logo" />
+        <span>Kubernetes Manager<small>DASHBOARD FOR K8S</small></span>
+      </a>
+      <div class="nav-links" id="navLinks">
+        <a href="#features">Features</a>
+        <a href="#assistant">AI Assistant</a>
+        <a href="#download">Download</a>
+        <a href="#docker">Docker</a>
+        <a class="nav-cta" href="#download">Get the app</a>
+      </div>
+      <button class="menu-btn" id="menuBtn" aria-label="Menu">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero" id="top">
+  <div class="wrap">
+    <span class="badge"><span class="dot"></span> Version 1.1.0 · macOS &amp; Docker</span>
+    <h1>Operate your cluster with a <span class="grad">beautiful</span> Kubernetes UI</h1>
+    <p class="sub">A modern, Lens-style dashboard for browsing and operating any Kubernetes cluster using your local <code>kubeconfig</code> — live metrics, pod logs, interactive shells, topology, Helm, and a built-in AI debugging assistant.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/praveenraghav01/k8s-manager-ui/releases/latest" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.365 1.43c0 1.14-.42 2.2-1.12 3.02-.84.99-2.22 1.75-3.36 1.66-.14-1.12.43-2.3 1.08-3.04C13.78 2.05 15.3 1.4 16.365 1.43zM20.9 17.02c-.55 1.27-.82 1.84-1.53 2.96-1 1.56-2.4 3.5-4.15 3.51-1.55.02-1.95-1.02-4.05-1.01-2.1.01-2.54 1.03-4.1 1.02-1.74-.02-3.07-1.77-4.07-3.33C1.16 15.66.8 10.55 3.05 7.83c1.02-1.24 2.5-1.97 4.06-1.97 1.6 0 2.6 1.02 3.92 1.02 1.28 0 2.06-1.02 3.91-1.02 1.38 0 2.85.75 3.9 2.05-3.43 1.88-2.87 6.78.06 8.08z"/></svg>
+        Download for macOS
+      </a>
+      <a class="btn btn-ghost" href="#docker">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.98 11.08h2.12a.19.19 0 0 0 .19-.19V9.01a.19.19 0 0 0-.19-.19h-2.12a.19.19 0 0 0-.19.19v1.88c0 .11.08.19.19.19m-2.95 0h2.12a.19.19 0 0 0 .19-.19V9.01a.19.19 0 0 0-.19-.19h-2.12a.19.19 0 0 0-.19.19v1.88c0 .11.09.19.19.19m-2.9 0h2.11a.19.19 0 0 0 .19-.19V9.01a.19.19 0 0 0-.19-.19H8.13a.19.19 0 0 0-.19.19v1.88c0 .11.08.19.19.19m-2.94 0h2.12a.19.19 0 0 0 .18-.19V9.01a.19.19 0 0 0-.18-.19H5.19A.19.19 0 0 0 5 9.01v1.88c0 .11.08.19.19.19m2.94-2.72h2.11a.19.19 0 0 0 .19-.19V6.29a.19.19 0 0 0-.19-.19H8.13a.19.19 0 0 0-.19.19v1.88c0 .11.08.19.19.19m2.95 0h2.12a.19.19 0 0 0 .19-.19V6.29a.19.19 0 0 0-.19-.19h-2.12a.19.19 0 0 0-.19.19v1.88c0 .11.09.19.19.19m11.65 1.23c-.28-.19-.93-.26-1.44-.16-.06-.48-.33-.9-.81-1.28l-.28-.19-.18.27c-.24.36-.33.87-.29 1.35.02.31.13.66.31.94-.14.08-.42.19-.78.18H.16l-.02.13c-.11.66-.11 2.7 1.21 4.26 1 1.19 2.5 1.79 4.46 1.79 4.24 0 7.38-1.95 8.85-5.51.58.01 1.83.01 2.47-1.21.04-.07.13-.25.17-.32z"/></svg>
+        Run with Docker
+      </a>
+    </div>
+    <p class="fineprint">Free &amp; open-source · Apple Silicon <code>.dmg</code> · Multi-arch container image</p>
+
+    <div class="shot-wrap reveal">
+      <div class="shot-glow"></div>
+      <div class="shot-frame">
+        <div class="shot-bar">
+          <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
+          <span class="addr">localhost:3001 · Cluster dashboard</span>
+        </div>
+        <img src="assets/screenshot-dashboard.png" alt="Kubernetes Manager cluster dashboard showing node and pod health, capacity, and cluster info" />
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STRIP -->
+<div class="strip reveal">
+  <div class="wrap">
+    <div class="stat"><b><span class="grad">Lens-style</span></b><span>familiar, fast workflow</span></div>
+    <div class="stat"><b>15+</b><span>resource views</span></div>
+    <div class="stat"><b>Live</b><span>CPU / memory metrics</span></div>
+    <div class="stat"><b>Read-only</b><span>AI assistant, by design</span></div>
+    <div class="stat"><b>2 ways</b><span>macOS app or Docker</span></div>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<section class="sec" id="features">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="kicker">Everything in one pane</span>
+      <h2>All your cluster operations, beautifully unified</h2>
+      <p>Browse workloads, watch live metrics, stream logs, open a shell, forward ports and inspect topology — without leaving the window.</p>
+    </div>
+    <div class="grid">
+      <div class="card i-cyan reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg></div>
+        <h3>Live cluster dashboard</h3>
+        <p>Node and pod health donuts, workload charts and real capacity — an at-a-glance overview the moment you connect.</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
+        <h3>Every workload type</h3>
+        <p>Pods, Deployments, StatefulSets, DaemonSets, Services and more — with live CPU/memory from metrics-server and per-container status.</p>
+      </div>
+      <div class="card i-green reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg></div>
+        <h3>Interactive shell</h3>
+        <p>A real TTY into any pod — <code>kubectl exec -it</code> streamed over WebSocket to a full xterm.js terminal.</p>
+      </div>
+      <div class="card i-purple reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6M9 6h6a3 3 0 0 1 3 3v6"/></svg></div>
+        <h3>Interactive topology</h3>
+        <p>Pan &amp; zoom the graph of Deployment → ReplicaSet → Pod → Service relationships to understand what talks to what.</p>
+      </div>
+      <div class="card i-amber reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="15" r="3"/></svg></div>
+        <h3>Pod logs &amp; multi-tab panel</h3>
+        <p>Search, tail and format logs with per-container selection. Logs, terminal and YAML tabs sit side by side in a bottom panel.</p>
+      </div>
+      <div class="card i-red reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/><path d="M3 5v14"/></svg></div>
+        <h3>Port forwarding</h3>
+        <p>Forward a Service port straight to <code>localhost</code> — pick a port or grab a random one, no CLI juggling.</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7L12 12l8.7-5M12 22V12"/></svg></div>
+        <h3>Custom Resources &amp; Helm</h3>
+        <p>Lazy-loaded CRD tree with YAML details, plus Helm releases with their values and rendered manifests.</p>
+      </div>
+      <div class="card i-cyan reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg></div>
+        <h3>Lens-style detail drawer</h3>
+        <p>A right-side panel with metadata, live metric graphs, conditions and containers — cross-linked namespace → node → pod → owner.</p>
+      </div>
+      <div class="card i-amber reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></div>
+        <h3>Light &amp; dark themes</h3>
+        <p>Switch themes with one click — token-driven styling that persists across sessions.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- AI ASSISTANT -->
+<section class="band" id="assistant">
+  <div class="wrap sec">
+    <div class="split">
+      <div class="reveal">
+        <span class="kicker">Powered by Claude</span>
+        <h2>An AI assistant that actually reads your cluster</h2>
+        <p>Click the ✨ button and ask in plain English — <em>“why is this pod not ready?”</em> or <em>“any warning events in kube-system?”</em>. It runs an agentic tool-use loop over read-only cluster data and streams the answer back token by token.</p>
+        <ul class="checklist">
+          <li><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> <span><b>Read-only by design</b> — it can never modify your cluster; it shows you the <code>kubectl</code> command when a change is needed.</span></li>
+          <li><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> <span><b>Grounded in live data</b> — calls tools like logs, events and describe to base every answer on your real cluster.</span></li>
+          <li><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> <span><b>Secrets redacted</b> — secret values are stripped from tool output before anything reaches the API.</span></li>
+          <li><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> <span><b>Context-aware</b> — knows your current view and bring-your-own Anthropic API key.</span></li>
+        </ul>
+      </div>
+      <div class="chat reveal">
+        <div class="chat-head">
+          <span class="spark"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg></span>
+          <b>Assistant</b><span>read-only · claude-opus</span>
+        </div>
+        <div class="chat-body">
+          <div class="bubble user">Why is the checkout pod stuck in Pending?</div>
+          <div>
+            <span class="tool-pill"><span class="d"></span> get_events</span>
+            <span class="tool-pill"><span class="d"></span> describe_resource</span>
+            <span class="tool-pill"><span class="d"></span> list_nodes</span>
+          </div>
+          <div class="bubble ai">The <code>checkout-7d9f</code> pod is <b>Pending</b> because no node can satisfy its request of <code>2 CPU</code> — all nodes are at capacity. Either scale the deployment down, add a node, or lower the CPU request. To inspect: <code>kubectl describe pod checkout-7d9f</code>.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DOWNLOAD -->
+<section class="sec" id="download">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="kicker">Get started in a minute</span>
+      <h2>Download &amp; run</h2>
+      <p>Grab the native macOS app, or spin it up anywhere with the official Docker image. Both serve the same UI on top of your kubeconfig.</p>
+    </div>
+    <div class="dl-grid">
+      <!-- MAC -->
+      <div class="dl-card reveal">
+        <div class="head">
+          <div class="ico"><svg viewBox="0 0 24 24"><path d="M16.365 1.43c0 1.14-.42 2.2-1.12 3.02-.84.99-2.22 1.75-3.36 1.66-.14-1.12.43-2.3 1.08-3.04C13.78 2.05 15.3 1.4 16.365 1.43zM20.9 17.02c-.55 1.27-.82 1.84-1.53 2.96-1 1.56-2.4 3.5-4.15 3.51-1.55.02-1.95-1.02-4.05-1.01-2.1.01-2.54 1.03-4.1 1.02-1.74-.02-3.07-1.77-4.07-3.33C1.16 15.66.8 10.55 3.05 7.83c1.02-1.24 2.5-1.97 4.06-1.97 1.6 0 2.6 1.02 3.92 1.02 1.28 0 2.06-1.02 3.91-1.02 1.38 0 2.85.75 3.9 2.05-3.43 1.88-2.87 6.78.06 8.08z"/></svg></div>
+          <div>
+            <h3>macOS App</h3>
+            <div class="meta">Apple Silicon (arm64) · .dmg · v1.1.0</div>
+          </div>
+        </div>
+        <p>A native <code>Kubernetes Manager.app</code> that starts the server and opens the UI in its own window. It reconstructs your shell <code>PATH</code> so <code>kubectl</code> is found automatically.</p>
+        <a class="btn btn-primary" href="https://github.com/praveenraghav01/k8s-manager-ui/releases/latest" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58 0-.29-.01-1.05-.02-2.06-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.33-1.76-1.33-1.76-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.11-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.65 1.66.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.61-2.8 5.63-5.48 5.92.43.37.81 1.1.81 2.22 0 1.6-.01 2.9-.01 3.29 0 .32.22.7.83.58C20.56 22.29 24 17.79 24 12.5 24 5.87 18.63.5 12 .5z"/></svg>
+          Get it on GitHub
+        </a>
+        <ol class="steps" style="margin-top:18px">
+          <li>Open the <code>.dmg</code> and drag the app to Applications.</li>
+          <li>First launch: right-click the app → <b>Open</b> (ad-hoc signed build).</li>
+          <li>Requires <code>kubectl</code> installed locally.</li>
+        </ol>
+      </div>
+
+      <!-- DOCKER -->
+      <div class="dl-card reveal" id="docker">
+        <div class="head">
+          <div class="ico"><svg viewBox="0 0 24 24"><path d="M13.98 11.08h2.12a.19.19 0 0 0 .19-.19V9.01a.19.19 0 0 0-.19-.19h-2.12a.19.19 0 0 0-.19.19v1.88c0 .11.08.19.19.19m-2.95 0h2.12a.19.19 0 0 0 .19-.19V9.01a.19.19 0 0 0-.19-.19h-2.12a.19.19 0 0 0-.19.19v1.88c0 .11.09.19.19.19m-2.9 0h2.11a.19.19 0 0 0 .19-.19V9.01a.19.19 0 0 0-.19-.19H8.13a.19.19 0 0 0-.19.19v1.88c0 .11.08.19.19.19m-2.94 0h2.12a.19.19 0 0 0 .18-.19V9.01a.19.19 0 0 0-.18-.19H5.19A.19.19 0 0 0 5 9.01v1.88c0 .11.08.19.19.19m2.94-2.72h2.11a.19.19 0 0 0 .19-.19V6.29a.19.19 0 0 0-.19-.19H8.13a.19.19 0 0 0-.19.19v1.88c0 .11.08.19.19.19m2.95 0h2.12a.19.19 0 0 0 .19-.19V6.29a.19.19 0 0 0-.19-.19h-2.12a.19.19 0 0 0-.19.19v1.88c0 .11.09.19.19.19m11.65 1.23c-.28-.19-.93-.26-1.44-.16-.06-.48-.33-.9-.81-1.28l-.28-.19-.18.27c-.24.36-.33.87-.29 1.35.02.31.13.66.31.94-.14.08-.42.19-.78.18H.16l-.02.13c-.11.66-.11 2.7 1.21 4.26 1 1.19 2.5 1.79 4.46 1.79 4.24 0 7.38-1.95 8.85-5.51.58.01 1.83.01 2.47-1.21.04-.07.13-.25.17-.32z"/></svg></div>
+          <div>
+            <h3>Docker</h3>
+            <div class="meta">Multi-arch (amd64 / arm64) · serves on :3001</div>
+          </div>
+        </div>
+        <p>The image bundles Node and <code>kubectl</code>. Mount your kubeconfig read-only and open the mapped port.</p>
+        <div class="code">
+          <div class="code-head"><span>Terminal</span><button class="copy-btn" data-copy="run"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button></div>
+<pre id="run"><span class="cmt"># pull &amp; run — UI on http://localhost:8080</span>
+docker run --rm <span class="flag">-p</span> 8080:3001 \
+  <span class="flag">-v</span> "$HOME/.kube:/root/.kube:ro" \
+  <span class="img">praveenraghav/k8s-manager-ui:latest</span></pre>
+        </div>
+        <div class="code">
+          <div class="code-head"><span>Pull only</span><button class="copy-btn" data-copy="pull"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button></div>
+<pre id="pull">docker pull <span class="img">praveenraghav/k8s-manager-ui:latest</span></pre>
+        </div>
+        <ol class="steps">
+          <li>Optionally add <code>-e ANTHROPIC_API_KEY=sk-ant-…</code> to enable the AI assistant.</li>
+          <li>For EKS/GKE/AKS, ensure the cloud auth CLI is available or use a static-token kubeconfig.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="prereq reveal">
+      <span class="tag">🧩 Requires <code>kubectl</code> on your PATH</span>
+      <span class="tag">⎈ <code>helm</code> v3 for the Helm view</span>
+      <span class="tag">📄 A working <code>kubeconfig</code></span>
+      <span class="tag">📊 metrics-server for live CPU/memory</span>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="final">
+  <div class="wrap reveal">
+    <h2>Ready to see your cluster clearly?</h2>
+    <p>Install the macOS app or pull the container — you'll be exploring workloads in under a minute.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/praveenraghav01/k8s-manager-ui/releases/latest" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.365 1.43c0 1.14-.42 2.2-1.12 3.02-.84.99-2.22 1.75-3.36 1.66-.14-1.12.43-2.3 1.08-3.04C13.78 2.05 15.3 1.4 16.365 1.43zM20.9 17.02c-.55 1.27-.82 1.84-1.53 2.96-1 1.56-2.4 3.5-4.15 3.51-1.55.02-1.95-1.02-4.05-1.01-2.1.01-2.54 1.03-4.1 1.02-1.74-.02-3.07-1.77-4.07-3.33C1.16 15.66.8 10.55 3.05 7.83c1.02-1.24 2.5-1.97 4.06-1.97 1.6 0 2.6 1.02 3.92 1.02 1.28 0 2.06-1.02 3.91-1.02 1.38 0 2.85.75 3.9 2.05-3.43 1.88-2.87 6.78.06 8.08z"/></svg>
+        Download for macOS
+      </a>
+      <a class="btn btn-ghost" href="#docker">Run with Docker</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#top">
+      <img class="logo" src="assets/icon.svg" alt="" />
+      <span>Kubernetes Manager<small>© 2026 · MIT-style open source</small></span>
+    </a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/praveenraghav01/k8s-manager-ui" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://hub.docker.com/r/praveenraghav/k8s-manager-ui" target="_blank" rel="noopener">Docker Hub</a>
+    </div>
+    <div class="copy">Built for developers and platform teams. Requires a Kubernetes cluster and a valid kubeconfig. Not affiliated with the Kubernetes project or the CNCF.</div>
+  </div>
+</footer>
+
+<script>
+  // Mobile menu
+  const menuBtn = document.getElementById('menuBtn');
+  const navLinks = document.getElementById('navLinks');
+  menuBtn?.addEventListener('click', () => navLinks.classList.toggle('open'));
+  navLinks?.querySelectorAll('a').forEach(a => a.addEventListener('click', () => navLinks.classList.remove('open')));
+
+  // Copy buttons
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const el = document.getElementById(btn.dataset.copy);
+      const text = el.innerText.replace(/^#.*\n/, '').trim();
+      try {
+        await navigator.clipboard.writeText(text);
+        const orig = btn.innerHTML;
+        btn.classList.add('ok');
+        btn.textContent = '✓ Copied';
+        setTimeout(() => { btn.classList.remove('ok'); btn.innerHTML = orig; }, 1600);
+      } catch (e) {}
+    });
+  });
+
+  // Scroll reveal
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+</script>
+</body>
+</html>
