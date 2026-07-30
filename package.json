@@ -48,6 +48,7 @@
     "files": [
       "electron/**/*",
       "server.js",
+      "assistant.js",
       "package.json",
       "client/dist/**/*"
     ],
