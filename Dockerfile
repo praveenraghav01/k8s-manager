@@ -27,15 +27,26 @@ WORKDIR /app
 # TARGETARCH is provided by BuildKit (amd64 / arm64); default to amd64
 ARG TARGETARCH=amd64
 
-# Patch OS packages, then install kubectl (the app shells out to it).
+# Patch OS packages, then install kubectl (the app shells out to it) and the
+# kubelogin OIDC exec plugin.
 # NOTE: helm is intentionally NOT installed — Helm releases are read directly
 # via the Kubernetes API (see server.js), which also avoids the large cluster
 # of Go-module CVEs that ship inside the helm binary.
+# kubelogin is installed as `kubectl-oidc_login` so kubeconfigs that
+# authenticate via `kubectl oidc-login` work inside the container (statically
+# linked Go binary, so it runs fine on Alpine/musl).
 RUN apk upgrade --no-cache \
   && apk add --no-cache bash curl ca-certificates \
+  && apk add --no-cache --virtual .build-deps unzip \
   && KUBECTL_VERSION="$(curl -fsSL https://dl.k8s.io/release/stable.txt)" \
   && curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" -o /usr/local/bin/kubectl \
   && chmod +x /usr/local/bin/kubectl \
+  && curl -fsSL "https://github.com/int128/kubelogin/releases/latest/download/kubelogin_linux_${TARGETARCH}.zip" -o /tmp/kubelogin.zip \
+  && unzip -o /tmp/kubelogin.zip -d /tmp/kubelogin \
+  && mv /tmp/kubelogin/kubelogin /usr/local/bin/kubectl-oidc_login \
+  && chmod +x /usr/local/bin/kubectl-oidc_login \
+  && rm -rf /tmp/kubelogin /tmp/kubelogin.zip \
+  && apk del .build-deps \
   # npm/npx/corepack aren't used at runtime (the app runs `node server.js`);
   # removing them drops the CVEs in npm's bundled dependencies.
   && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
@@ -59,7 +70,7 @@ EXPOSE 3001
 # package "overview". The release workflow's docker/metadata-action overrides
 # source/revision/created automatically; set IMAGE_SOURCE for manual builds.
 # ------------------------------------------------------------------
-ARG APP_VERSION="0.0.0"
+ARG APP_VERSION="1.2.1"
 LABEL org.opencontainers.image.title="Kubernetes Manager UI" \
       org.opencontainers.image.description="Web UI to browse and operate Kubernetes clusters — workloads, nodes, events, logs, in-browser exec/terminal, service port-forwarding, Helm releases, RBAC and CRDs. Reads your kubeconfig and serves the UI + REST API on port 3001." \
       org.opencontainers.image.version="${APP_VERSION}" \
